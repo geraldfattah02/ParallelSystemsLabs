@@ -3,7 +3,6 @@
 #include "operators.h"
 #include <stdlib.h>
 #include <pthread.h>
-#include <spin_barrier.h>
 
 struct prefix_sum_args_t {
   int*               input_vals;

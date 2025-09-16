@@ -7,6 +7,8 @@
 #include <prefix_sum.h>
 #include "helpers.h"
 
+extern pthread_barrier_t pthread_barrier;
+
 pthread_t* alloc_threads(int n_threads);
 
 void start_threads(pthread_t*               threads,

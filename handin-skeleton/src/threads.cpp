@@ -1,5 +1,9 @@
 #include "threads.h"
 #include "helpers.h"
+#include "barrier.h"
+
+//pthread_barrier_t pthread_barrier;
+barrier_t global_barrier;
 
 pthread_t *alloc_threads(int n_threads)
 {

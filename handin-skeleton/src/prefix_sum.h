@@ -1,8 +1,13 @@
 #pragma once
 
-#include <stdlib.h>
+#include "helpers.h"
+#include <cmath>
+#include <cstdlib>
+#include <cstring>
 #include <pthread.h>
-#include <spin_barrier.h>
-#include <iostream>
+#include "prefix_sum.h"
+#include "barrier.h"
+#include <cstdio>
+
 
 void* compute_prefix_sum(void* a);

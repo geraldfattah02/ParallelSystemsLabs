@@ -1,14 +1,17 @@
 #include <iostream>
 #include <argparse.h>
-#include <threads.h>
+#include "threads.h"
 #include <io.h>
 #include <chrono>
 #include <cstring>
 #include "operators.h"
 #include "helpers.h"
 #include "prefix_sum.h"
+#include "barrier.h"
 
 using namespace std;
+//extern pthread_barrier_t pthread_barrier;
+extern barrier_t global_barrier;
 
 int main(int argc, char **argv)
 {
@@ -38,9 +41,11 @@ int main(int argc, char **argv)
 
     fill_args(ps_args, opts.n_threads, n_vals, input_vals, output_vals,
         opts.spin, scan_operator, opts.n_loops);
-
+    for (int i = 0; i < n_vals; i++) {
+        output_vals[i] = 0;
+    }
     // Start timer
-    auto start = std::chrono::high_resolution_clock::now();
+    auto start = std::chrono::steady_clock::now();
 
     if (sequential)  {
         //sequential prefix scan
@@ -51,16 +56,31 @@ int main(int argc, char **argv)
         }
     }
     else {
-        //start_threads(threads, opts.n_threads, ps_args, <your function>);
+        #if USE_CUSTOM_BARRIER
+            my_barrier_init(&global_barrier, opts.n_threads);
+        #else 
+            pthread_barrier_init(&global_barrier, NULL, opts.n_threads);
+        #endif
+        start_threads(threads, opts.n_threads, ps_args, compute_prefix_sum);
 
         // Wait for threads to finish
         join_threads(threads, opts.n_threads);
+
+        #if USE_CUSTOM_BARRIER
+            my_barrier_destroy(&global_barrier);
+        #else 
+            pthread_barrier_destroy(&global_barrier);
+        #endif
     }
 
     //End timer and print out elapsed
-    auto end = std::chrono::high_resolution_clock::now();
+    auto end = std::chrono::steady_clock::now();
     auto diff = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
     std::cout << "time: " << diff.count() << std::endl;
+
+    // for (int i = 0; i < n_vals; i++) {
+    //     std::cout << output_vals[i] << std::endl;
+    // }
 
     // Write output data
     write_file(&opts, &(ps_args[0]));

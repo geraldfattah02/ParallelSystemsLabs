@@ -80,8 +80,17 @@ int main(int argc, char **argv) {
 
     fscanf(fp, "%d", &nPoints);
     float *points = (float *)malloc(sizeof(float) * nPoints * dims);
-    for (int i = 0; i < nPoints * dims; i++)
-        fscanf(fp, "%f", &points[i]);
+    
+    // Read each line, skipping the point ID
+    for (int i = 0; i < nPoints; i++) {
+        int pointId;
+        fscanf(fp, "%d", &pointId); // Read and discard the point ID
+        
+        // Now read the actual dims values for this point
+        for (int d = 0; d < dims; d++) {
+            fscanf(fp, "%f", &points[i * dims + d]);
+        }
+    }
     fclose(fp);
 
     float *centroids = (float *)malloc(sizeof(float) * k * dims);
@@ -96,13 +105,13 @@ int main(int argc, char **argv) {
     }
 
 #if defined(USE_CPU)
-    printf("Running CPU version...\n");
+    //printf("Running CPU version...\n");
 #elif defined(USE_CUDA_BASIC)
-    printf("Running CUDA basic version...\n");
+    //printf("Running CUDA basic version...\n");
 #elif defined(USE_CUDA_SHMEM)
-    printf("Running CUDA shared memory version...\n");
+    //printf("Running CUDA shared memory version...\n");
 #elif defined(USE_THRUST)
-    printf("Running Thrust version...\n");
+    //printf("Running Thrust version...\n");
 #endif
 
     double start = getTimeMs();
@@ -119,20 +128,19 @@ int main(int argc, char **argv) {
 
     double end = getTimeMs();
     double timePerIter = (end - start) / maxIter;
-    printf("%d,%.6lf\n", maxIter, timePerIter);
+    //printf("%d,%.6lf\n", maxIter, timePerIter);
 
-    // Output results
+    // Output centroids in ROW-MAJOR now (c * dims + d)
     if (outputCentroids) {
-        for (int i = 0; i < k; i++) {
-            printf("%d ", i);
-            for (int d = 0; d < dims; d++)
-                printf("%lf ", centroids[i * dims + d]);
+        for (int c = 0; c < k; ++c) {
+            printf("%d ", c);
+            for (int d = 0; d < dims; ++d)
+                printf("%lf ", centroids[c * dims + d]); // row-major print
             printf("\n");
         }
     } else {
         printf("clusters:");
-        for (int i = 0; i < nPoints; i++)
-            printf(" %d", labels[i]);
+        for (int i = 0; i < nPoints; i++) printf(" %d", labels[i]);
         printf("\n");
     }
 

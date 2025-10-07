@@ -4,21 +4,30 @@
 #include <math.h>
 #include <sys/time.h>
 
+// Select implementation depending on which flag was defined at compile time
+#if defined(USE_CPU)
 extern "C" {
     void kmeansCPU(float *points, float *centroids, int *labels,
                    int nPoints, int k, int dims, int maxIter, float threshold);
-
+}
+#elif defined(USE_CUDA_BASIC)
+extern "C" {
     void kmeansCUDA_Basic(float *points, float *centroids, int *labels,
                           int nPoints, int k, int dims, int maxIter, float threshold);
-
+}
+#elif defined(USE_CUDA_SHMEM)
+extern "C" {
     void kmeansCUDA_Shared(float *points, float *centroids, int *labels,
                            int nPoints, int k, int dims, int maxIter, float threshold);
-
+}
+#elif defined(USE_THRUST)
+extern "C" {
     void kmeansThrust(float *points, float *centroids, int *labels,
                       int nPoints, int k, int dims, int maxIter, float threshold);
 }
+#endif
 
-// simple random functions for centroid initialization
+// Simple random generator for centroid initialization
 static unsigned long int nextSeed = 1;
 static unsigned long kmeans_rmax = 32767;
 
@@ -26,9 +35,12 @@ int kmeans_rand() {
     nextSeed = nextSeed * 1103515245 + 12345;
     return (unsigned int)(nextSeed / 65536) % (kmeans_rmax + 1);
 }
-void kmeans_srand(unsigned int seed) { nextSeed = seed; }
 
-// measure time in milliseconds
+void kmeans_srand(unsigned int seed) {
+    nextSeed = seed;
+}
+
+// Return current time in milliseconds
 double getTimeMs() {
     struct timeval tv;
     gettimeofday(&tv, NULL);
@@ -43,9 +55,7 @@ int main(int argc, char **argv) {
     char inputFile[256] = {0};
     bool outputCentroids = false;
 
-    bool useCPU = false, useCUDA_Basic = false, useCUDA_Shmem = false, useThrust = false;
-
-    // parse command line args
+    // Command-line arguments
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-k")) k = atoi(argv[++i]);
         else if (!strcmp(argv[i], "-d")) dims = atoi(argv[++i]);
@@ -54,10 +64,6 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "-t")) threshold = atof(argv[++i]);
         else if (!strcmp(argv[i], "-s")) seed = atoi(argv[++i]);
         else if (!strcmp(argv[i], "-c")) outputCentroids = true;
-        else if (!strcmp(argv[i], "--use_cpu")) useCPU = true;
-        else if (!strcmp(argv[i], "--use_cuda_basic")) useCUDA_Basic = true;
-        else if (!strcmp(argv[i], "--use_cuda_shmem")) useCUDA_Shmem = true;
-        else if (!strcmp(argv[i], "--use_thrust")) useThrust = true;
     }
 
     if (k == 0 || dims == 0 || strlen(inputFile) == 0) {
@@ -65,10 +71,10 @@ int main(int argc, char **argv) {
         return -1;
     }
 
-    // read dataset
+    // Read dataset
     FILE *fp = fopen(inputFile, "r");
     if (!fp) {
-        perror("could not open input file");
+        perror("Could not open input file");
         return -1;
     }
 
@@ -81,7 +87,7 @@ int main(int argc, char **argv) {
     float *centroids = (float *)malloc(sizeof(float) * k * dims);
     int *labels = (int *)malloc(sizeof(int) * nPoints);
 
-    // initialize centroids randomly
+    // Random centroid initialization
     kmeans_srand(seed);
     for (int i = 0; i < k; i++) {
         int idx = kmeans_rand() % nPoints;
@@ -89,27 +95,33 @@ int main(int argc, char **argv) {
             centroids[i * dims + d] = points[idx * dims + d];
     }
 
+#if defined(USE_CPU)
+    printf("Running CPU version...\n");
+#elif defined(USE_CUDA_BASIC)
+    printf("Running CUDA basic version...\n");
+#elif defined(USE_CUDA_SHMEM)
+    printf("Running CUDA shared memory version...\n");
+#elif defined(USE_THRUST)
+    printf("Running Thrust version...\n");
+#endif
+
     double start = getTimeMs();
 
-    // choose which version to run
-    if (useCPU) {
-        kmeansCPU(points, centroids, labels, nPoints, k, dims, maxIter, threshold);
-    } else if (useCUDA_Basic) {
-        kmeansCUDA_Basic(points, centroids, labels, nPoints, k, dims, maxIter, threshold);
-    } else if (useCUDA_Shmem) {
-        kmeansCUDA_Shared(points, centroids, labels, nPoints, k, dims, maxIter, threshold);
-    } else if (useThrust) {
-        kmeansThrust(points, centroids, labels, nPoints, k, dims, maxIter, threshold);
-    } else {
-        fprintf(stderr, "No implementation flag specified.\n");
-        return -1;
-    }
+#if defined(USE_CPU)
+    kmeansCPU(points, centroids, labels, nPoints, k, dims, maxIter, threshold);
+#elif defined(USE_CUDA_BASIC)
+    kmeansCUDA_Basic(points, centroids, labels, nPoints, k, dims, maxIter, threshold);
+#elif defined(USE_CUDA_SHMEM)
+    kmeansCUDA_Shared(points, centroids, labels, nPoints, k, dims, maxIter, threshold);
+#elif defined(USE_THRUST)
+    kmeansThrust(points, centroids, labels, nPoints, k, dims, maxIter, threshold);
+#endif
 
     double end = getTimeMs();
     double timePerIter = (end - start) / maxIter;
     printf("%d,%.6lf\n", maxIter, timePerIter);
 
-    // output centroids or cluster labels
+    // Output results
     if (outputCentroids) {
         for (int i = 0; i < k; i++) {
             printf("%d ", i);

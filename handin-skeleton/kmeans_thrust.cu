@@ -1,14 +1,4 @@
-#include <thrust/device_vector.h>
-#include <thrust/host_vector.h>
-#include <thrust/transform.h>
-#include <thrust/reduce.h>
-#include <thrust/reduce_by_key.h>
-#include <thrust/sort.h>
-#include <thrust/sequence.h>
-#include <thrust/for_each.h>
-#include <thrust/copy.h>
-#include <thrust/iterator/zip_iterator.h>
-#include <thrust/tuple.h>
+#include <thrust/thrust.h>
 #include <math.h>
 #include <float.h>
 #include <stdio.h>

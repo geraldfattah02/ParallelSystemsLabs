@@ -2,7 +2,7 @@
 CXX = g++
 NVCC = nvcc
 CXXFLAGS = -O3 -Wall -std=c++17
-NVCCFLAGS = -O3 -std=c++17
+NVCCFLAGS = -O3 --std c++14 -Xcompiler -Wall
 
 # Output directory
 BIN_DIR = ./bin

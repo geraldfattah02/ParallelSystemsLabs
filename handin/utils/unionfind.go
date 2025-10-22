@@ -15,12 +15,19 @@ func NewUnionFind(n int) *UnionFind {
 }
 
 func (uf *UnionFind) Find(x int) int {
-	if uf.parent[x] != x {
-		uf.parent[x] = uf.Find(uf.parent[x])
+	// Iterative path compression
+	root := x
+	for uf.parent[root] != root {
+		root = uf.parent[root]
 	}
-	return uf.parent[x]
+	// Path compression
+	for x != root {
+		parent := uf.parent[x]
+		uf.parent[x] = root
+		x = parent
+	}
+	return root
 }
-
 func (uf *UnionFind) Union(a, b int) {
 	ra, rb := uf.Find(a), uf.Find(b)
 	if ra == rb {

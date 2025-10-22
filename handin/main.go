@@ -1,4 +1,3 @@
-// main.go
 package main
 
 import (
@@ -16,26 +15,25 @@ import (
 )
 
 func main() {
-	// --- flags ---
-	hashWorkers := flag.Int("hash-workers", 1, "number of hashing worker goroutines (0 => one goroutine per tree)")
-	dataMode := flag.String("data-mode", "channel", "how to collect hashes: 'channel' or 'lock'")
-	compWorkers := flag.Int("comp-workers", 4, "number of comparison worker goroutines (used in comp-mode=pool)")
+	// command-line flags
+	hashWorkers := flag.Int("hash-workers", 1, "number of hashing goroutines (0 = one per tree)")
+	dataWorkers := flag.Int("data-workers", 1, "number of workers to update the map")
+	compWorkers := flag.Int("comp-workers", 1, "number of goroutines used for tree comparison")
 	compMode := flag.String("comp-mode", "goroutine", "comparison mode: 'goroutine' or 'pool'")
-	input := flag.String("input", "simple.txt", "input file path")
+	input := flag.String("input", "simple.txt", "path to input file")
 	flag.Parse()
 
-	startTotal := time.Now()
-
-	//Read & build trees
-	t0 := time.Now()
+	// read all trees from input
 	lines, err := utils.ReadLines(*input)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Error reading input:", err)
+		fmt.Fprintln(os.Stderr, "error reading input:", err)
 		os.Exit(1)
 	}
-	trees := make([]*bst.BST, 0, len(lines))
+
+	var trees []*bst.BST
 	for _, line := range lines {
-		if strings.TrimSpace(line) == "" {
+		line = strings.TrimSpace(line)
+		if line == "" {
 			continue
 		}
 		nums := utils.ParseLine(line)
@@ -45,17 +43,17 @@ func main() {
 		}
 		trees = append(trees, t)
 	}
-	fmt.Printf("Read & built %d trees in %v\n", len(trees), time.Since(t0))
 
-	// Preallocate slices
-	inOrders := make([][]int, len(trees))
-	hashes := make([]string, len(trees))
+	n := len(trees)
+	inOrders := make([][]int, n)
+	hashes := make([]string, n)
 
-	// Hashing
-	t1 := time.Now()
+	// --- compute hashes ---
+	tStart := time.Now()
+
 	if *hashWorkers == 0 {
 		var wg sync.WaitGroup
-		wg.Add(len(trees))
+		wg.Add(n)
 		for i := range trees {
 			go func(idx int) {
 				defer wg.Done()
@@ -68,6 +66,7 @@ func main() {
 	} else {
 		jobs := make(chan int)
 		var wg sync.WaitGroup
+
 		for w := 0; w < *hashWorkers; w++ {
 			wg.Add(1)
 			go func() {
@@ -79,57 +78,101 @@ func main() {
 				}
 			}()
 		}
+
 		for i := range trees {
 			jobs <- i
 		}
 		close(jobs)
 		wg.Wait()
 	}
-	fmt.Printf("Hashed %d trees in %v\n", len(trees), time.Since(t1))
 
-	// Build hash map
-	t2 := time.Now()
+	fmt.Printf("hashTime: %.6f\n", time.Since(tStart).Seconds())
+
+	// --- build hash groups ---
 	hashToIDs := make(map[string][]int)
-	if *dataMode == "channel" {
+
+	switch {
+	case *hashWorkers == 1 && *dataWorkers == 1:
+		// sequential
+		for i, h := range hashes {
+			hashToIDs[h] = append(hashToIDs[h], i)
+		}
+
+	case *dataWorkers == 1:
+		// one goroutine manages all map updates via a channel
 		ch := make(chan struct {
 			h string
 			i int
-		})
+		}, len(hashes))
 		var wg sync.WaitGroup
 		wg.Add(1)
+
 		go func() {
 			defer wg.Done()
 			for p := range ch {
 				hashToIDs[p.h] = append(hashToIDs[p.h], p.i)
 			}
 		}()
+
 		for i, h := range hashes {
 			ch <- struct {
 				h string
 				i int
-			}{h: h, i: i}
+			}{h, i}
 		}
 		close(ch)
 		wg.Wait()
-	} else {
+
+	case *dataWorkers == *hashWorkers:
+		// multiple workers update the map with a lock
 		var mu sync.Mutex
 		var wg sync.WaitGroup
-		for i, h := range hashes {
-			wg.Add(1)
-			go func(idx int, hh string) {
-				defer wg.Done()
-				mu.Lock()
-				hashToIDs[hh] = append(hashToIDs[hh], idx)
-				mu.Unlock()
-			}(i, h)
+		type pair struct {
+			h string
+			i int
 		}
-		wg.Wait()
-	}
-	fmt.Printf("Built hash map in %v\n", time.Since(t2))
+		jobs := make(chan pair, len(hashes))
 
-	// Comparisons
-	t3 := time.Now()
-	n := len(trees)
+		for w := 0; w < *dataWorkers; w++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for p := range jobs {
+					mu.Lock()
+					hashToIDs[p.h] = append(hashToIDs[p.h], p.i)
+					mu.Unlock()
+				}
+			}()
+		}
+		for i, h := range hashes {
+			jobs <- pair{h: h, i: i}
+		}
+		close(jobs)
+
+		wg.Wait()
+
+	default:
+		fmt.Fprintf(os.Stderr, "unsupported flag combo: hash-workers=%d data-workers=%d\n", *hashWorkers, *dataWorkers)
+		os.Exit(1)
+	}
+
+	fmt.Printf("hashGroupTime: %.6f\n", time.Since(tStart).Seconds())
+
+	// print only groups with more than one element
+	groupCount := 0
+	for _, ids := range hashToIDs {
+		if len(ids) > 1 {
+			fmt.Printf("hash%d:", groupCount)
+			for _, id := range ids {
+				fmt.Printf(" %d", id)
+			}
+			fmt.Println()
+			groupCount++
+		}
+	}
+
+	// --- tree comparison ---
+	tCompare := time.Now()
 	uf := utils.NewUnionFind(n)
 
 	areEqual := func(a, b int) bool {
@@ -150,7 +193,8 @@ func main() {
 
 	if *compMode == "goroutine" {
 		var wg sync.WaitGroup
-		var mu sync.Mutex // Mutex to protect UnionFind
+		var mu sync.Mutex
+
 		for _, p := range workPairs {
 			wg.Add(1)
 			go func(a, b int) {
@@ -166,6 +210,7 @@ func main() {
 	} else {
 		buf := buffer.NewBoundedBuffer(*compWorkers)
 		var workers sync.WaitGroup
+
 		for w := 0; w < *compWorkers; w++ {
 			workers.Add(1)
 			go func() {
@@ -182,6 +227,7 @@ func main() {
 				}
 			}()
 		}
+
 		for _, p := range workPairs {
 			if !buf.Push(p) {
 				break
@@ -191,14 +237,19 @@ func main() {
 		workers.Wait()
 	}
 
-	fmt.Printf("Compared %d pairs in %v\n", len(workPairs), time.Since(t3))
+	fmt.Printf("compareTreeTime: %.6f\n", time.Since(tCompare).Seconds())
 
-	// Step 5: Group detection
-	groups := uf.Groups()
-	fmt.Printf("Found %d groups of equivalent trees\n", len(groups))
-	for gi, g := range groups {
-		fmt.Printf("group %d: %v\n", gi, g)
+	// --- print final tree groups ---
+	finalGroups := uf.Groups()
+	idx := 0
+	for _, g := range finalGroups {
+		if len(g) > 1 {
+			fmt.Printf("group %d:", idx)
+			for _, id := range g {
+				fmt.Printf(" %d", id)
+			}
+			fmt.Println()
+			idx++
+		}
 	}
-
-	fmt.Printf("Total elapsed: %v\n", time.Since(startTotal))
 }

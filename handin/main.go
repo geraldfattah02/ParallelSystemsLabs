@@ -26,7 +26,7 @@ func main() {
 
 	startTotal := time.Now()
 
-	// --- Step 1: Read & build trees ---
+	//Read & build trees
 	t0 := time.Now()
 	lines, err := utils.ReadLines(*input)
 	if err != nil {
@@ -51,7 +51,7 @@ func main() {
 	inOrders := make([][]int, len(trees))
 	hashes := make([]string, len(trees))
 
-	// --- Step 2: Hashing ---
+	// Hashing
 	t1 := time.Now()
 	if *hashWorkers == 0 {
 		var wg sync.WaitGroup
@@ -87,7 +87,7 @@ func main() {
 	}
 	fmt.Printf("Hashed %d trees in %v\n", len(trees), time.Since(t1))
 
-	// --- Step 3: Build hash map ---
+	// Build hash map
 	t2 := time.Now()
 	hashToIDs := make(map[string][]int)
 	if *dataMode == "channel" {
@@ -127,12 +127,11 @@ func main() {
 	}
 	fmt.Printf("Built hash map in %v\n", time.Since(t2))
 
-	// --- Step 4: Comparisons ---
+	// Comparisons
 	t3 := time.Now()
 	n := len(trees)
-	adj := utils.NewAdjMatrix(n)
+	uf := utils.NewUnionFind(n)
 
-	// Helper comparator
 	areEqual := func(a, b int) bool {
 		ia := inOrders[a]
 		ib := inOrders[b]
@@ -147,18 +146,19 @@ func main() {
 		return true
 	}
 
-	// Build work pairs
-	workPairs := utils.BuildWorkPairs(hashToIDs, adj)
+	workPairs := utils.BuildWorkPairs(hashToIDs)
 
 	if *compMode == "goroutine" {
 		var wg sync.WaitGroup
+		var mu sync.Mutex // Mutex to protect UnionFind
 		for _, p := range workPairs {
 			wg.Add(1)
 			go func(a, b int) {
 				defer wg.Done()
 				if areEqual(a, b) {
-					adj[a][b] = true
-					adj[b][a] = true
+					mu.Lock()
+					uf.Union(a, b)
+					mu.Unlock()
 				}
 			}(p[0], p[1])
 		}
@@ -177,8 +177,7 @@ func main() {
 					}
 					a, b := item[0], item[1]
 					if areEqual(a, b) {
-						adj[a][b] = true
-						adj[b][a] = true
+						uf.Union(a, b)
 					}
 				}
 			}()
@@ -194,8 +193,8 @@ func main() {
 
 	fmt.Printf("Compared %d pairs in %v\n", len(workPairs), time.Since(t3))
 
-	// --- Step 5: Group detection ---
-	groups := utils.FindGroupsFromAdj(adj)
+	// Step 5: Group detection
+	groups := uf.Groups()
 	fmt.Printf("Found %d groups of equivalent trees\n", len(groups))
 	for gi, g := range groups {
 		fmt.Printf("group %d: %v\n", gi, g)

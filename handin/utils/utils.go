@@ -41,16 +41,14 @@ func NewAdjMatrix(n int) [][]bool {
 	return adj
 }
 
-func BuildWorkPairs(hashToIDs map[string][]int, adj [][]bool) [][2]int {
+func BuildWorkPairs(hashToIDs map[string][]int) [][2]int {
 	work := make([][2]int, 0)
 	for _, ids := range hashToIDs {
 		if len(ids) == 1 {
-			k := ids[0]
-			adj[k][k] = true
 			continue
 		}
 		for i := 0; i < len(ids); i++ {
-			for j := i; j < len(ids); j++ {
+			for j := i + 1; j < len(ids); j++ {
 				work = append(work, [2]int{ids[i], ids[j]})
 			}
 		}
@@ -58,10 +56,10 @@ func BuildWorkPairs(hashToIDs map[string][]int, adj [][]bool) [][2]int {
 	return work
 }
 
-func FindGroupsFromAdj(adj [][]bool) [][]int {
-	n := len(adj)
+func FindGroupsFromAdj(adj map[int]map[int]bool, n int) [][]int {
 	visited := make([]bool, n)
 	groups := [][]int{}
+
 	for i := 0; i < n; i++ {
 		if visited[i] {
 			continue
@@ -73,8 +71,8 @@ func FindGroupsFromAdj(adj [][]bool) [][]int {
 			u := stack[len(stack)-1]
 			stack = stack[:len(stack)-1]
 			group = append(group, u)
-			for v := 0; v < n; v++ {
-				if !visited[v] && adj[u][v] {
+			for v := range adj[u] {
+				if !visited[v] {
 					visited[v] = true
 					stack = append(stack, v)
 				}

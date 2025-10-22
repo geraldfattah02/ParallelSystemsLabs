@@ -17,7 +17,6 @@ comp_modes = ["goroutine", "pool"]
 
 results = {}
 
-# Make sure we run from the handin directory
 os.chdir(os.path.dirname(__file__))
 
 for fname in inputs:
@@ -34,12 +33,13 @@ for fname in inputs:
                     print(e.output.decode())
                     continue
 
-                # Look for the line "Total elapsed: X ms"
-                match = re.search(r"Total elapsed:\s*([0-9.]+)\s*ms", out)
+                # Look for "Total elapsed: X ms", "Total elapsed: X s", or "Total elapsed: X µs"
+                match = re.search(r"Total elapsed:\s*([0-9.]+)\s*(ms|s|µs)", out)
                 if match:
-                    time_ms = float(match.group(1))
-                    results[(fname, data, comp, hw)] = time_ms
-                    print(f"Elapsed time: {time_ms:.4f} ms")
+                    time_val = float(match.group(1))
+                    unit = match.group(2)
+                    results[(fname, data, comp, hw)] = (time_val, unit)
+                    print(f"Elapsed time: {time_val:.4f} {unit}")
                 else:
                     print("Could not find timing info:")
                     print(out)
@@ -48,14 +48,15 @@ print("\n==================== RESULTS ====================")
 for fname in inputs:
     print(f"\nInput file: {fname}")
     print("------------------------------------------------------------")
-    print(f"{'DataMode':<10} {'CompMode':<12} {'HashWorkers':<12} {'Time (ms)':<10}")
+    print(f"{'DataMode':<10} {'CompMode':<12} {'HashWorkers':<12} {'Time':<10}")
     print("------------------------------------------------------------")
     for data in data_modes:
         for comp in comp_modes:
             for hw in hash_workers:
                 key = (fname, data, comp, hw)
                 if key in results:
-                    print(f"{data:<10} {comp:<12} {hw:<12} {results[key]:<10.4f}")
+                    val, unit = results[key]
+                    print(f"{data:<10} {comp:<12} {hw:<12} {val:<8.4f} {unit}")
                 else:
                     print(f"{data:<10} {comp:<12} {hw:<12} {'N/A':<10}")
     print("------------------------------------------------------------")

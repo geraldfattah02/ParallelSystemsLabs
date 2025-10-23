@@ -128,7 +128,7 @@ int main(int argc, char **argv) {
 
     double end = getTimeMs();
     double timePerIter = (end - start) / maxIter;
-    //printf("%d,%.6lf\n", maxIter, timePerIter);
+    printf("%d,%lf\n", maxIter, timePerIter);
 
     // Output centroids in ROW-MAJOR now (c * dims + d)
     if (outputCentroids) {

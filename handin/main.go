@@ -17,8 +17,8 @@ import (
 func main() {
 	// command-line flags
 	hashWorkers := flag.Int("hash-workers", 1, "number of hashing goroutines (0 = one per tree)")
-	dataWorkers := flag.Int("data-workers", 1, "number of workers to update the map")
-	compWorkers := flag.Int("comp-workers", 1, "number of goroutines used for tree comparison")
+	dataWorkers := flag.Int("data-workers", 0, "number of workers to update the map")
+	compWorkers := flag.Int("comp-workers", 0, "number of goroutines used for tree comparison")
 	compMode := flag.String("comp-mode", "goroutine", "comparison mode: 'goroutine' or 'pool'")
 	input := flag.String("input", "simple.txt", "path to input file")
 	flag.Parse()
@@ -89,6 +89,9 @@ func main() {
 	fmt.Printf("hashTime: %.6f\n", time.Since(tStart).Seconds())
 
 	// --- build hash groups ---
+	if *dataWorkers == 0 {
+		return
+	}
 	hashToIDs := make(map[string][]int)
 
 	switch {
@@ -157,7 +160,6 @@ func main() {
 	}
 
 	fmt.Printf("hashGroupTime: %.6f\n", time.Since(tStart).Seconds())
-
 	// print only groups with more than one element
 	groupCount := 0
 	for _, ids := range hashToIDs {
@@ -188,7 +190,9 @@ func main() {
 		}
 		return true
 	}
-
+	if *compWorkers == 0 {
+		return
+	}
 	workPairs := utils.BuildWorkPairs(hashToIDs)
 
 	if *compMode == "goroutine" {
